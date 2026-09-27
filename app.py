@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import os
 
 st.set_page_config(
     page_title="What Can I Cook?",
@@ -11,14 +12,28 @@ st.title("🍳 What Can I Cook?")
 st.write("Find recipes using the ingredients you already have.")
 
 # -----------------------------
-# LOAD RECIPES
+# LOAD ORIGINAL RECIPES
 # -----------------------------
 
 @st.cache_data
-def load_recipes():
+def load_original_recipes():
     return pd.read_csv("recipes.csv")
 
-df = load_recipes()
+df = load_original_recipes()
+
+# -----------------------------
+# LOAD USER RECIPES
+# -----------------------------
+
+if os.path.exists("user_recipes.csv"):
+
+    user_df = pd.read_csv("user_recipes.csv")
+
+    if not user_df.empty:
+        df = pd.concat(
+            [df, user_df],
+            ignore_index=True
+        )
 
 # -----------------------------
 # ADD YOUR OWN RECIPE
@@ -40,7 +55,7 @@ with st.expander("Add a new recipe"):
 
     recipe_time = st.text_input(
         "⏱️ Cooking time",
-        placeholder="Example: 15 minutes"
+        placeholder="Example: 10 minutes"
     )
 
     recipe_difficulty = st.selectbox(
@@ -62,32 +77,31 @@ with st.expander("Add a new recipe"):
         ):
 
             new_recipe = pd.DataFrame([{
-                "recipe": recipe_name,
-                "ingredients": recipe_ingredients,
-                "time": recipe_time,
+                "recipe": recipe_name.strip(),
+                "ingredients": recipe_ingredients.strip(),
+                "time": recipe_time.strip(),
                 "difficulty": recipe_difficulty,
-                "steps": recipe_steps
+                "steps": recipe_steps.strip()
             }])
 
-            df = pd.concat(
-                [df, new_recipe],
-                ignore_index=True
+            # Save recipe permanently
+            new_recipe.to_csv(
+                "user_recipes.csv",
+                mode="a",
+                header=False,
+                index=False
             )
-
-            st.session_state["recipes"] = df
 
             st.success(
-                f"✅ {recipe_name} added successfully!"
+                f"✅ {recipe_name} saved successfully!"
             )
+
+            st.cache_data.clear()
 
         else:
             st.warning(
                 "Please fill in the recipe name, ingredients and steps."
             )
-
-# Use newly added recipes during this session
-if "recipes" in st.session_state:
-    df = st.session_state["recipes"]
 
 st.divider()
 
@@ -108,6 +122,19 @@ if st.button("🔍 Find Recipes"):
     if not ingredients.strip():
         st.warning("Please enter at least one ingredient.")
         st.stop()
+
+    # Reload all recipes
+    df = load_original_recipes()
+
+    if os.path.exists("user_recipes.csv"):
+
+        user_df = pd.read_csv("user_recipes.csv")
+
+        if not user_df.empty:
+            df = pd.concat(
+                [df, user_df],
+                ignore_index=True
+            )
 
     user_ingredients = set(
         item.strip().lower()
@@ -155,7 +182,7 @@ if st.button("🔍 Find Recipes"):
         st.error("😕 No matching recipes found.")
 
         st.info(
-            "Try adding different ingredients or add your own recipe above."
+            "Try different ingredients or add your own recipe."
         )
 
         st.stop()
@@ -207,10 +234,6 @@ if st.button("🔍 Find Recipes"):
             st.write(recipe["steps"])
 
         st.divider()
-
-# -----------------------------
-# FOOTER
-# -----------------------------
 
 st.caption(
     "🤖 What Can I Cook? | FY B.Sc. AI & DS Project"

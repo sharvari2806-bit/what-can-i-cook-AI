@@ -1,51 +1,23 @@
 import streamlit as st
 import pandas as pd
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-
-# -----------------------------
-# PAGE SETTINGS
-# -----------------------------
 
 st.set_page_config(
     page_title="What Can I Cook?",
-    page_icon="🍳",
-    layout="centered"
+    page_icon="🍳"
 )
-
-# -----------------------------
-# LOAD DATASET
-# -----------------------------
-
-@st.cache_data
-def load_data():
-    return pd.read_csv("recipes.csv")
-
-df = load_data()
-
-# -----------------------------
-# TITLE
-# -----------------------------
 
 st.title("🍳 What Can I Cook?")
+st.write("Enter the ingredients you have and get recipe recommendations.")
 
-st.write(
-    "Enter the ingredients you have and get recipe recommendations."
-)
+# Load recipes
+df = pd.read_csv("recipes.csv")
 
-# -----------------------------
-# USER INPUT
-# -----------------------------
-
+# User input
 ingredients = st.text_area(
     "🥕 Enter your ingredients",
-    placeholder="Example: potato, onion, tomato, garlic",
+    placeholder="Example: potato, onion, tomato, cheese",
     height=120
 )
-
-# -----------------------------
-# RECOMMEND RECIPES
-# -----------------------------
 
 if st.button("🔍 Find Recipes"):
 
@@ -53,52 +25,55 @@ if st.button("🔍 Find Recipes"):
         st.warning("Please enter at least one ingredient.")
         st.stop()
 
-    # Convert ingredients to lowercase
-    user_ingredients = ingredients.lower()
+    # Convert user ingredients into words
+    user_ingredients = [
+        x.strip().lower()
+        for x in ingredients.split(",")
+        if x.strip()
+    ]
 
-    # Create TF-IDF model
-    vectorizer = TfidfVectorizer()
+    results = []
 
-    recipe_vectors = vectorizer.fit_transform(
-        df["ingredients"]
+    # Check every recipe
+    for _, recipe in df.iterrows():
+
+        recipe_ingredients = [
+            x.strip().lower()
+            for x in recipe["ingredients"].split(",")
+        ]
+
+        matches = set(user_ingredients) & set(recipe_ingredients)
+
+        if len(matches) > 0:
+            results.append(
+                (
+                    len(matches),
+                    recipe
+                )
+            )
+
+    # Sort by number of matching ingredients
+    results.sort(
+        key=lambda x: x[0],
+        reverse=True
     )
 
-    user_vector = vectorizer.transform(
-        [user_ingredients]
-    )
-
-    # Calculate similarity
-    similarity = cosine_similarity(
-        user_vector,
-        recipe_vectors
-    )[0]
-
-    # Add similarity score
-    df_result = df.copy()
-
-    df_result["similarity"] = similarity
-
-    # Get top 3 different recipes
-    recommendations = (
-        df_result
-        .sort_values(
-            by="similarity",
-            ascending=False
+    if not results:
+        st.warning(
+            "😕 No matching recipe found in our current recipe dataset."
         )
-        .head(3)
-    )
-
-    # -----------------------------
-    # DISPLAY RESULTS
-    # -----------------------------
+        st.info(
+            "Try entering ingredients such as potato, onion, tomato, "
+            "paneer, pasta, rice, egg or mango."
+        )
+        st.stop()
 
     st.success("🍽️ Recipes found!")
 
-    for _, recipe in recommendations.iterrows():
+    # Show maximum 3 recipes
+    for match_count, recipe in results[:3]:
 
-        st.subheader(
-            "🍴 " + recipe["recipe"]
-        )
+        st.subheader("🍴 " + recipe["recipe"])
 
         st.write(
             "🥕 **Ingredients:** "
@@ -120,12 +95,19 @@ if st.button("🔍 Find Recipes"):
             + recipe["steps"]
         )
 
+        st.write(
+            "✅ **Your matching ingredients:** "
+            + ", ".join(
+                set(user_ingredients)
+                & set(
+                    x.strip().lower()
+                    for x in recipe["ingredients"].split(",")
+                )
+            )
+        )
+
         st.divider()
 
-# -----------------------------
-# FOOTER
-# -----------------------------
-
 st.caption(
-    "🤖 AI Recipe Recommender | FY B.Sc. AI & DS Project"
+    "🤖 Recipe Recommendation App | FY B.Sc. AI & DS Project"
 )

@@ -1,60 +1,131 @@
 import streamlit as st
+import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+
+# -----------------------------
+# PAGE SETTINGS
+# -----------------------------
 
 st.set_page_config(
     page_title="What Can I Cook?",
-    page_icon="🍳"
+    page_icon="🍳",
+    layout="centered"
 )
+
+# -----------------------------
+# LOAD DATASET
+# -----------------------------
+
+@st.cache_data
+def load_data():
+    return pd.read_csv("recipes.csv")
+
+df = load_data()
+
+# -----------------------------
+# TITLE
+# -----------------------------
 
 st.title("🍳 What Can I Cook?")
-st.write("Enter any ingredients you have!")
+
+st.write(
+    "Enter the ingredients you have and get recipe recommendations."
+)
+
+# -----------------------------
+# USER INPUT
+# -----------------------------
 
 ingredients = st.text_area(
-    "🥕 Your ingredients",
-    placeholder="Example: potato, onion, tomato, cheese"
+    "🥕 Enter your ingredients",
+    placeholder="Example: potato, onion, tomato, garlic",
+    height=120
 )
+
+# -----------------------------
+# RECOMMEND RECIPES
+# -----------------------------
 
 if st.button("🔍 Find Recipes"):
 
-    if ingredients.strip():
-
-        items = [
-            item.strip().title()
-            for item in ingredients.split(",")
-            if item.strip()
-        ]
-
-        st.success("Here are some ideas for you! 🍽️")
-
-        # Universal suggestions based on whatever the user enters
-        st.subheader("🍳 Recipe Ideas")
-
-        st.write("1. 🍲 Mixed Ingredient Curry")
-        st.write(
-            f"Use {', '.join(items)} with spices and cook together."
-        )
-
-        st.write("2. 🥘 Quick Stir-Fry")
-        st.write(
-            f"Stir-fry {', '.join(items)} with oil, salt and your "
-            "favorite spices."
-        )
-
-        st.write("3. 🍛 One-Pot Meal")
-        st.write(
-            f"Combine {', '.join(items)} with a suitable base "
-            "such as rice, pasta or noodles."
-        )
-
-        st.subheader("👩‍🍳 Basic Cooking Method")
-
-        st.write("""
-1. Wash and prepare your ingredients.
-2. Heat a pan with a little oil.
-3. Add the ingredients that need the longest cooking time first.
-4. Add spices and seasoning according to taste.
-5. Cook until the ingredients are properly cooked.
-6. Serve hot! 🍽️
-""")
-
-    else:
+    if not ingredients.strip():
         st.warning("Please enter at least one ingredient.")
+        st.stop()
+
+    # Convert ingredients to lowercase
+    user_ingredients = ingredients.lower()
+
+    # Create TF-IDF model
+    vectorizer = TfidfVectorizer()
+
+    recipe_vectors = vectorizer.fit_transform(
+        df["ingredients"]
+    )
+
+    user_vector = vectorizer.transform(
+        [user_ingredients]
+    )
+
+    # Calculate similarity
+    similarity = cosine_similarity(
+        user_vector,
+        recipe_vectors
+    )[0]
+
+    # Add similarity score
+    df_result = df.copy()
+
+    df_result["similarity"] = similarity
+
+    # Get top 3 different recipes
+    recommendations = (
+        df_result
+        .sort_values(
+            by="similarity",
+            ascending=False
+        )
+        .head(3)
+    )
+
+    # -----------------------------
+    # DISPLAY RESULTS
+    # -----------------------------
+
+    st.success("🍽️ Recipes found!")
+
+    for _, recipe in recommendations.iterrows():
+
+        st.subheader(
+            "🍴 " + recipe["recipe"]
+        )
+
+        st.write(
+            "🥕 **Ingredients:** "
+            + recipe["ingredients"]
+        )
+
+        st.write(
+            "⏱️ **Cooking time:** "
+            + str(recipe["time"])
+        )
+
+        st.write(
+            "👩‍🍳 **Difficulty:** "
+            + str(recipe["difficulty"])
+        )
+
+        st.write(
+            "📖 **How to make:** "
+            + recipe["steps"]
+        )
+
+        st.divider()
+
+# -----------------------------
+# FOOTER
+# -----------------------------
+
+st.caption(
+    "🤖 AI Recipe Recommender | FY B.Sc. AI & DS Project"
+)

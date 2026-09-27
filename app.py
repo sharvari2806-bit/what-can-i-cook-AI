@@ -3,20 +3,104 @@ import pandas as pd
 
 st.set_page_config(
     page_title="What Can I Cook?",
-    page_icon="🍳"
+    page_icon="🍳",
+    layout="centered"
 )
 
 st.title("🍳 What Can I Cook?")
-st.write("Enter the ingredients you have and get recipe recommendations.")
+st.write("Find recipes using the ingredients you already have.")
 
-# Load recipes
-df = pd.read_csv("recipes.csv")
+# -----------------------------
+# LOAD RECIPES
+# -----------------------------
 
-# User input
+@st.cache_data
+def load_recipes():
+    return pd.read_csv("recipes.csv")
+
+df = load_recipes()
+
+# -----------------------------
+# ADD YOUR OWN RECIPE
+# -----------------------------
+
+st.header("➕ Add Your Own Recipe")
+
+with st.expander("Add a new recipe"):
+
+    recipe_name = st.text_input(
+        "🍴 Recipe name",
+        placeholder="Example: Cheese Maggi"
+    )
+
+    recipe_ingredients = st.text_input(
+        "🥕 Ingredients",
+        placeholder="Example: noodles, cheese, onion"
+    )
+
+    recipe_time = st.text_input(
+        "⏱️ Cooking time",
+        placeholder="Example: 15 minutes"
+    )
+
+    recipe_difficulty = st.selectbox(
+        "👩‍🍳 Difficulty",
+        ["Easy", "Medium", "Hard"]
+    )
+
+    recipe_steps = st.text_area(
+        "📖 How to make it",
+        placeholder="Write the cooking steps here..."
+    )
+
+    if st.button("➕ Add Recipe"):
+
+        if (
+            recipe_name.strip()
+            and recipe_ingredients.strip()
+            and recipe_steps.strip()
+        ):
+
+            new_recipe = pd.DataFrame([{
+                "recipe": recipe_name,
+                "ingredients": recipe_ingredients,
+                "time": recipe_time,
+                "difficulty": recipe_difficulty,
+                "steps": recipe_steps
+            }])
+
+            df = pd.concat(
+                [df, new_recipe],
+                ignore_index=True
+            )
+
+            st.session_state["recipes"] = df
+
+            st.success(
+                f"✅ {recipe_name} added successfully!"
+            )
+
+        else:
+            st.warning(
+                "Please fill in the recipe name, ingredients and steps."
+            )
+
+# Use newly added recipes during this session
+if "recipes" in st.session_state:
+    df = st.session_state["recipes"]
+
+st.divider()
+
+# -----------------------------
+# FIND RECIPES
+# -----------------------------
+
+st.header("🔎 Find a Recipe")
+
 ingredients = st.text_area(
-    "🥕 Enter your ingredients",
+    "🥕 What ingredients do you have?",
     placeholder="Example: potato, onion, tomato, cheese",
-    height=120
+    height=100
 )
 
 if st.button("🔍 Find Recipes"):
@@ -25,55 +109,84 @@ if st.button("🔍 Find Recipes"):
         st.warning("Please enter at least one ingredient.")
         st.stop()
 
-    # Convert user ingredients into words
-    user_ingredients = [
-        x.strip().lower()
-        for x in ingredients.split(",")
-        if x.strip()
-    ]
+    user_ingredients = set(
+        item.strip().lower()
+        for item in ingredients.split(",")
+        if item.strip()
+    )
 
-    results = []
+    recommendations = []
 
-    # Check every recipe
     for _, recipe in df.iterrows():
 
-        recipe_ingredients = [
-            x.strip().lower()
-            for x in recipe["ingredients"].split(",")
-        ]
+        recipe_ingredients = set(
+            item.strip().lower()
+            for item in recipe["ingredients"].split(",")
+        )
 
-        matches = set(user_ingredients) & set(recipe_ingredients)
+        matching = user_ingredients.intersection(
+            recipe_ingredients
+        )
 
-        if len(matches) > 0:
-            results.append(
-                (
-                    len(matches),
-                    recipe
-                )
-            )
+        if matching:
 
-    # Sort by number of matching ingredients
-    results.sort(
-        key=lambda x: x[0],
+            score = (
+                len(matching)
+                / len(recipe_ingredients)
+            ) * 100
+
+            recommendations.append({
+                "recipe": recipe["recipe"],
+                "ingredients": recipe["ingredients"],
+                "time": recipe["time"],
+                "difficulty": recipe["difficulty"],
+                "steps": recipe["steps"],
+                "matching": matching,
+                "score": score
+            })
+
+    recommendations.sort(
+        key=lambda x: x["score"],
         reverse=True
     )
 
-    if not results:
-        st.warning(
-            "😕 No matching recipe found in our current recipe dataset."
-        )
+    if not recommendations:
+
+        st.error("😕 No matching recipes found.")
+
         st.info(
-            "Try entering ingredients such as potato, onion, tomato, "
-            "paneer, pasta, rice, egg or mango."
+            "Try adding different ingredients or add your own recipe above."
         )
+
         st.stop()
 
-    st.success("🍽️ Recipes found!")
+    st.success(
+        f"🍽️ Found {len(recommendations)} matching recipes!"
+    )
 
-    # Show maximum 3 recipes
-    for match_count, recipe in results[:3]:
+    # -----------------------------
+    # DISPLAY TOP 3
+    # -----------------------------
 
-        st.subheader("🍴 " + recipe["recipe"])
+    for recipe in recommendations[:3]:
+
+        st.subheader(
+            "🍴 " + recipe["recipe"]
+        )
+
+        st.progress(
+            min(int(recipe["score"]), 100)
+        )
+
+        st.write(
+            f"🎯 **Ingredient match: "
+            f"{recipe['score']:.0f}%**"
+        )
+
+        st.write(
+            "✅ **You have:** "
+            + ", ".join(recipe["matching"])
+        )
 
         st.write(
             "🥕 **Ingredients:** "
@@ -90,24 +203,15 @@ if st.button("🔍 Find Recipes"):
             + str(recipe["difficulty"])
         )
 
-        st.write(
-            "📖 **How to make:** "
-            + recipe["steps"]
-        )
-
-        st.write(
-            "✅ **Your matching ingredients:** "
-            + ", ".join(
-                set(user_ingredients)
-                & set(
-                    x.strip().lower()
-                    for x in recipe["ingredients"].split(",")
-                )
-            )
-        )
+        with st.expander("📖 How to make it"):
+            st.write(recipe["steps"])
 
         st.divider()
 
+# -----------------------------
+# FOOTER
+# -----------------------------
+
 st.caption(
-    "🤖 Recipe Recommendation App | FY B.Sc. AI & DS Project"
+    "🤖 What Can I Cook? | FY B.Sc. AI & DS Project"
 )
